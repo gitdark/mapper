@@ -26,6 +26,7 @@
 #include <QRectF>
 #include <QSize>
 #include <QString>
+#include <QStringList>
 
 namespace OpenOrienteering {
 
@@ -64,6 +65,22 @@ QString wmsCapabilitiesUrl(const QString& server_url);
  *   protocol (e.g. "token=...", "map=...") are added to the GetMap URL.
  */
 QString wmsGetMapDatasetName(const QString& advertised_dataset_name, const QString& server_url);
+
+
+/**
+ * Returns the URL in the form used for the URL history:
+ * trimmed, without "WMS:" prefix and without trailing '?' or '&'.
+ */
+QString normalizedWmsUrl(const QString& url);
+
+
+/**
+ * Returns the URL history with the given URL at the front.
+ *
+ * URLs are normalized (cf. normalizedWmsUrl()). Duplicates and empty
+ * entries are removed, and the result has at most max_size entries.
+ */
+QStringList updateWmsUrlHistory(const QStringList& history, const QString& url, int max_size = 10);
 
 
 /**

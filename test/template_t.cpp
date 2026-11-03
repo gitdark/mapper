@@ -469,6 +469,34 @@ private slots:
 		         QStringLiteral("WMS:https://example.com/wms?map=x&SERVICE=WMS&REQUEST=GetCapabilities"));
 	}
 	
+	void wmsUrlHistoryTest()
+	{
+		QCOMPARE(normalizedWmsUrl(QStringLiteral("  WMS:https://a.example/wms?  ")), QStringLiteral("https://a.example/wms"));
+		QCOMPARE(normalizedWmsUrl(QStringLiteral("https://a.example/wms?map=x&")), QStringLiteral("https://a.example/wms?map=x"));
+		
+		auto const a = QStringLiteral("https://a.example/wms");
+		auto const b = QStringLiteral("https://b.example/wms");
+		auto const c = QStringLiteral("https://c.example/wms");
+		
+		// New URL goes to the front
+		QCOMPARE(updateWmsUrlHistory({a, b}, c), (QStringList{c, a, b}));
+		// Reused URL moves to the front, without duplicate
+		QCOMPARE(updateWmsUrlHistory({a, b, c}, c), (QStringList{c, a, b}));
+		// Normalization merges variants
+		QCOMPARE(updateWmsUrlHistory({a, b}, QStringLiteral(" https://b.example/wms? ")), (QStringList{b, a}));
+		// Empty URL and empty entries are dropped
+		QCOMPARE(updateWmsUrlHistory({a, QString(), b}, QString()), (QStringList{a, b}));
+		// Size limit
+		QStringList many;
+		for (int i = 0; i < 15; ++i)
+			many.push_back(QStringLiteral("https://h%1.example/wms").arg(i));
+		auto const limited = updateWmsUrlHistory(many, a);
+		QCOMPARE(limited.size(), 10);
+		QCOMPARE(limited.front(), a);
+		QCOMPARE(limited.back(), QStringLiteral("https://h8.example/wms"));
+		QCOMPARE(updateWmsUrlHistory(many, a, 3), (QStringList{a, many[0], many[1]}));
+	}
+	
 	void wmsGetMapDatasetNameTest_data()
 	{
 		QTest::addColumn<QString>("advertised");

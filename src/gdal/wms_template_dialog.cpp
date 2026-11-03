@@ -43,6 +43,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QVBoxLayout>
 #include <QVariant>
@@ -96,11 +97,31 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 		visible_extent = QRectF(QPointF(left, top), QPointF(right, bottom));
 	}
 
-	url_edit = new QLineEdit(settings.value(settingsKey("serverUrl")).toString());
+	// Server URL: editable, with the history of successfully used URLs.
+	// Note: URLs may contain access tokens which are stored in plain text.
+	url_combo = new QComboBox();
+	url_combo->setEditable(true);
+	url_combo->setInsertPolicy(QComboBox::NoInsert);
+	url_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+	url_combo->setMinimumContentsLength(30);
+	url_combo->setCompleter(nullptr);  // The popup shows the history.
+	url_edit = url_combo->lineEdit();
+	url_edit->setClearButtonEnabled(true);
 	url_edit->setPlaceholderText(QStringLiteral("https://example.com/wms"));
+	{
+		auto history = settings.value(settingsKey("serverUrls")).toStringList();
+		if (settings.contains(settingsKey("serverUrl")))
+		{
+			// Migrate from the single last URL
+			history = updateWmsUrlHistory(history, settings.value(settingsKey("serverUrl")).toString());
+			settings.setValue(settingsKey("serverUrls"), history);
+			settings.remove(settingsKey("serverUrl"));
+		}
+		setUrlHistory(history);
+	}
 	load_button = new QPushButton(tr("Load layers"));
 	auto* url_layout = new QHBoxLayout();
-	url_layout->addWidget(url_edit, 1);
+	url_layout->addWidget(url_combo, 1);
 	url_layout->addWidget(load_button);
 
 	layer_list = new QListWidget();
@@ -146,6 +167,10 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	layout->addWidget(button_box);
 
 	connect(load_button, &QPushButton::clicked, this, &WmsTemplateDialog::loadLayers);
+	// Choosing a history entry from the popup loads its layers, and so
+	// does Enter. (With NoInsert and without completer, the combo box does
+	// not emit activated() on Enter, so the layers are loaded only once.)
+	connect(url_combo, QOverload<int>::of(&QComboBox::activated), this, &WmsTemplateDialog::loadLayers);
 	connect(url_edit, &QLineEdit::returnPressed, this, &WmsTemplateDialog::loadLayers);
 	connect(layer_list, &QListWidget::currentRowChanged, this, &WmsTemplateDialog::updateDescription);
 	connect(area_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &WmsTemplateDialog::updateDescription);
@@ -156,7 +181,7 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 
 	if (map->getGeoreferencing().getState() != Georeferencing::Geospatial)
 	{
-		for (auto* widget : std::initializer_list<QWidget*>{ url_edit, load_button, layer_list, area_combo, resolution_edit, transparent_check })
+		for (auto* widget : std::initializer_list<QWidget*>{ url_combo, load_button, layer_list, area_combo, resolution_edit, transparent_check })
 			widget->setEnabled(false);
 		info_label->setText(tr("The map must be georeferenced in order to add a WMS layer."));
 	}
@@ -182,6 +207,20 @@ void WmsTemplateDialog::keyPressEvent(QKeyEvent* event)
 }
 
 
+void WmsTemplateDialog::setUrlHistory(const QStringList& history)
+{
+	// Keep the current text, e.g. a URL which is not yet in the history.
+	auto const text = url_combo->count() ? url_edit->text() : history.value(0);
+	QSignalBlocker blocker(url_combo);
+	url_combo->clear();
+	url_combo->addItems(history);
+	auto const index = url_combo->findText(normalizedWmsUrl(text));
+	if (index >= 0)
+		url_combo->setCurrentIndex(index);
+	url_edit->setText(index >= 0 ? url_combo->itemText(index) : text);
+}
+
+
 void WmsTemplateDialog::loadLayers()
 {
 	auto const url = url_edit->text().trimmed();
@@ -203,7 +242,10 @@ void WmsTemplateDialog::loadLayers()
 	}
 	else
 	{
-		QSettings().setValue(settingsKey("serverUrl"), url);
+		QSettings settings;
+		auto const history = updateWmsUrlHistory(settings.value(settingsKey("serverUrls")).toStringList(), url);
+		settings.setValue(settingsKey("serverUrls"), history);
+		setUrlHistory(history);
 	}
 
 	for (auto const& layer : layers)

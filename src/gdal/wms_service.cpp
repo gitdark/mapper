@@ -186,6 +186,32 @@ QString wmsCapabilitiesUrl(const QString& server_url)
 }
 
 
+QString normalizedWmsUrl(const QString& url)
+{
+	auto result = stripWmsPrefix(url);
+	while (result.endsWith(QLatin1Char('?')) || result.endsWith(QLatin1Char('&')))
+		result.chop(1);
+	return result;
+}
+
+
+QStringList updateWmsUrlHistory(const QStringList& history, const QString& url, int max_size)
+{
+	QStringList result;
+	auto const add = [&result](const QString& entry) {
+		auto const normalized = normalizedWmsUrl(entry);
+		if (!normalized.isEmpty() && !result.contains(normalized))
+			result.push_back(normalized);
+	};
+	add(url);
+	for (auto const& entry : history)
+		add(entry);
+	while (result.size() > max_size)
+		result.removeLast();
+	return result;
+}
+
+
 QString wmsGetMapDatasetName(const QString& advertised_dataset_name, const QString& server_url)
 {
 	auto const user_url = QUrl(stripWmsPrefix(server_url));

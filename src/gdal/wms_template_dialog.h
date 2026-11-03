@@ -26,6 +26,7 @@
 #include <QObject>
 #include <QRectF>
 #include <QString>
+#include <QStringList>
 
 #include "gdal/wms_service.h"
 
@@ -72,6 +73,7 @@ protected:
 
 private:
 	void loadLayers();
+	void setUrlHistory(const QStringList& history);
 	void updateDescription();
 	QRectF selectedArea() const;
 	QString defaultDirectory() const;
@@ -83,7 +85,8 @@ private:
 	QRectF visible_extent;
 	QString template_path;
 
-	QLineEdit* url_edit;
+	QComboBox* url_combo;   ///< Editable, with the URL history
+	QLineEdit* url_edit;    ///< The url_combo's line edit
 	QPushButton* load_button;
 	QListWidget* layer_list;
 	QComboBox* area_combo;
