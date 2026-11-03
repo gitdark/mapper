@@ -23,6 +23,7 @@
 
 #include <Qt>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QCursor>
 #include <QDialogButtonBox>
@@ -32,6 +33,7 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -119,6 +121,12 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	resolution_edit->setSuffix(tr(" m/px"));
 	resolution_edit->setValue(settings.value(settingsKey("resolution"), 1.0).toDouble());
 
+	transparent_check = new QCheckBox(tr("Transparent background"));
+	transparent_check->setToolTip(tr("Request PNG images with a transparent background, "
+	                                 "for overlay layers such as buildings or parcels. "
+	                                 "For aerial imagery, opaque JPEG images are smaller."));
+	transparent_check->setChecked(settings.value(settingsKey("transparent"), false).toBool());
+	
 	info_label = new QLabel();
 	info_label->setWordWrap(true);
 
@@ -130,6 +138,7 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	form->addRow(tr("Layer:"), layer_list);
 	form->addRow(tr("Area:"), area_combo);
 	form->addRow(tr("Resolution:"), resolution_edit);
+	form->addRow({}, transparent_check);
 
 	auto* layout = new QVBoxLayout(this);
 	layout->addLayout(form);
@@ -141,12 +150,13 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	connect(layer_list, &QListWidget::currentRowChanged, this, &WmsTemplateDialog::updateDescription);
 	connect(area_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &WmsTemplateDialog::updateDescription);
 	connect(resolution_edit, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &WmsTemplateDialog::updateDescription);
+	connect(transparent_check, &QCheckBox::toggled, this, &WmsTemplateDialog::updateDescription);
 	connect(button_box, &QDialogButtonBox::accepted, this, &WmsTemplateDialog::accept);
 	connect(button_box, &QDialogButtonBox::rejected, this, &WmsTemplateDialog::reject);
 
 	if (map->getGeoreferencing().getState() != Georeferencing::Geospatial)
 	{
-		for (auto* widget : std::initializer_list<QWidget*>{ url_edit, load_button, layer_list, area_combo, resolution_edit })
+		for (auto* widget : std::initializer_list<QWidget*>{ url_edit, load_button, layer_list, area_combo, resolution_edit, transparent_check })
 			widget->setEnabled(false);
 		info_label->setText(tr("The map must be georeferenced in order to add a WMS layer."));
 	}
@@ -156,6 +166,20 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 }
 
 WmsTemplateDialog::~WmsTemplateDialog() = default;
+
+
+void WmsTemplateDialog::keyPressEvent(QKeyEvent* event)
+{
+	// Enter in the URL field loads the layers (via returnPressed).
+	// It must not also trigger the default button, i.e. accept the dialog.
+	if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+	    && url_edit->hasFocus())
+	{
+		event->accept();
+		return;
+	}
+	QDialog::keyPressEvent(event);
+}
 
 
 void WmsTemplateDialog::loadLayers()
@@ -221,7 +245,8 @@ void WmsTemplateDialog::updateDescription()
 	QString const cache_path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
 	                           + QLatin1String("/wms");
 	description = makeWmsDescription(layers[std::size_t(row)].dataset_name, georef,
-	                                 selectedArea(), resolution_edit->value(), cache_path);
+	                                 selectedArea(), resolution_edit->value(), cache_path,
+	                                 transparent_check->isChecked());
 	if (!description.isValid())
 	{
 		info_label->setText(tr("Error: %1").arg(description.error));
@@ -287,6 +312,7 @@ void WmsTemplateDialog::accept()
 	file.close();
 
 	QSettings().setValue(settingsKey("resolution"), resolution_edit->value());
+	QSettings().setValue(settingsKey("transparent"), transparent_check->isChecked());
 	template_path = path;
 	QDialog::accept();
 }

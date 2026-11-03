@@ -29,9 +29,11 @@
 
 #include "gdal/wms_service.h"
 
+class QCheckBox;
 class QComboBox;
 class QDialogButtonBox;
 class QDoubleSpinBox;
+class QKeyEvent;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -65,6 +67,9 @@ public:
 
 	void accept() override;
 
+protected:
+	void keyPressEvent(QKeyEvent* event) override;
+
 private:
 	void loadLayers();
 	void updateDescription();
@@ -83,6 +88,7 @@ private:
 	QListWidget* layer_list;
 	QComboBox* area_combo;
 	QDoubleSpinBox* resolution_edit;
+	QCheckBox* transparent_check;
 	QLabel* info_label;
 	QDialogButtonBox* button_box;
 };

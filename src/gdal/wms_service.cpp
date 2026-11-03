@@ -20,6 +20,7 @@
 #include "wms_service.h"
 
 #include <algorithm>
+#include <iterator>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -103,6 +104,66 @@ void removeQueryItem(QUrlQuery& query, const QString& key)
 	query.setQueryItems(items);
 }
 
+/**
+ * Returns true if the host is not expected to be reachable from the internet.
+ */
+bool isInternalHost(const QString& host)
+{
+	if (host.isEmpty())
+		return false;
+	if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0)
+		return true;
+	
+	// IPv4 literals
+	auto const parts = host.split(QLatin1Char('.'));
+	if (parts.size() == 4)
+	{
+		int octets[4];
+		bool is_ipv4 = true;
+		for (int i = 0; i < 4 && is_ipv4; ++i)
+		{
+			octets[i] = parts[i].toInt(&is_ipv4);
+			is_ipv4 = is_ipv4 && octets[i] >= 0 && octets[i] <= 255;
+		}
+		if (is_ipv4)
+		{
+			return octets[0] == 10                                         // 10.0.0.0/8
+			       || octets[0] == 127                                     // loopback
+			       || (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)  // 172.16.0.0/12
+			       || (octets[0] == 192 && octets[1] == 168)               // 192.168.0.0/16
+			       || (octets[0] == 169 && octets[1] == 254);              // link-local
+		}
+	}
+	
+	// IPv6 literals
+	if (host.contains(QLatin1Char(':')))
+	{
+		auto const lower = host.toLower();
+		return lower == QLatin1String("::1")
+		       || lower.startsWith(QLatin1String("fc"))      // unique local fc00::/7
+		       || lower.startsWith(QLatin1String("fd"))
+		       || lower.startsWith(QLatin1String("fe80:"));  // link-local
+	}
+	
+	// Host names without a domain, e.g. "geoserver"
+	return !host.contains(QLatin1Char('.'));
+}
+
+/**
+ * Returns true if the query parameter is defined by the WMS protocol
+ * for GetCapabilities or GetMap requests.
+ */
+bool isWmsParameter(const QString& key)
+{
+	static const char* const wms_parameters[] = {
+	    "SERVICE", "REQUEST", "VERSION", "LAYERS", "STYLES", "SRS", "CRS", "BBOX",
+	    "WIDTH", "HEIGHT", "FORMAT", "TRANSPARENT", "BGCOLOR", "EXCEPTIONS",
+	};
+	return std::any_of(std::begin(wms_parameters), std::end(wms_parameters), [&key](auto const* name) {
+		return key.compare(QLatin1String(name), Qt::CaseInsensitive) == 0;
+	});
+}
+
 QByteArray toXmlNumber(double value)
 {
 	return QByteArray::number(value, 'f', 10);
@@ -121,6 +182,35 @@ QString wmsCapabilitiesUrl(const QString& server_url)
 	query.addQueryItem(QStringLiteral("SERVICE"), QStringLiteral("WMS"));
 	query.addQueryItem(QStringLiteral("REQUEST"), QStringLiteral("GetCapabilities"));
 	url.setQuery(query);
+	return wms_prefix + url.toString(QUrl::FullyEncoded);
+}
+
+
+QString wmsGetMapDatasetName(const QString& advertised_dataset_name, const QString& server_url)
+{
+	auto const user_url = QUrl(stripWmsPrefix(server_url));
+	auto url = QUrl(stripWmsPrefix(advertised_dataset_name));
+	if (!url.isValid() || !user_url.isValid())
+		return advertised_dataset_name;
+	
+	if (isInternalHost(url.host()) && !isInternalHost(user_url.host()))
+	{
+		url.setScheme(user_url.scheme());
+		url.setUserInfo(user_url.userInfo());
+		url.setHost(user_url.host());
+		url.setPort(user_url.port());
+		url.setPath(user_url.path());
+	}
+	
+	auto query = QUrlQuery(url);
+	auto const user_items = QUrlQuery(user_url).queryItems(QUrl::FullyDecoded);
+	for (auto const& item : user_items)
+	{
+		if (!isWmsParameter(item.first) && queryValue(query, item.first).isEmpty())
+			query.addQueryItem(item.first, item.second);
+	}
+	url.setQuery(query);
+	
 	return wms_prefix + url.toString(QUrl::FullyEncoded);
 }
 
@@ -175,7 +265,8 @@ std::vector<WmsLayer> queryWmsLayers(const QString& server_url, QString& error)
 		if (!name)
 			break;
 		auto desc = CSLFetchNameValue(subdatasets, QByteArray("SUBDATASET_" + QByteArray::number(i) + "_DESC").constData());
-		layers.push_back({ QString::fromUtf8(desc ? desc : name), QString::fromUtf8(name) });
+		layers.push_back({ QString::fromUtf8(desc ? desc : name),
+		                   wmsGetMapDatasetName(QString::fromUtf8(name), trimmed_url) });
 	}
 
 	if (layers.empty())
@@ -189,7 +280,8 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
                                   const Georeferencing& georef,
                                   const QRectF& map_extent,
                                   double resolution,
-                                  const QString& cache_path)
+                                  const QString& cache_path,
+                                  bool transparent)
 {
 	WmsDescription result;
 
@@ -367,6 +459,20 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
 		CPLDestroyXMLNode(overviews);
 	}
 
+	// GDAL defaults to opaque JPEG, regardless of the formats offered by the server.
+	if (transparent)
+	{
+		CPLSetXMLValue(wms, "Service.ImageFormat", "image/png");
+		CPLSetXMLValue(wms, "Service.Transparent", "TRUE");
+		CPLSetXMLValue(wms, "BandsCount", "4");
+	}
+	else
+	{
+		CPLSetXMLValue(wms, "Service.ImageFormat", "image/jpeg");
+		CPLSetXMLValue(wms, "Service.Transparent", "FALSE");
+		CPLSetXMLValue(wms, "BandsCount", "3");
+	}
+	
 	if (!cache_path.isEmpty())
 		CPLSetXMLValue(wms, "Cache.Path", cache_path.toUtf8());
 

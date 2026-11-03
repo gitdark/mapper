@@ -53,6 +53,20 @@ QString wmsCapabilitiesUrl(const QString& server_url);
 
 
 /**
+ * Returns the GDAL dataset name to be used for a layer, given the GetMap
+ * dataset name derived from the capabilities, and the URL entered by the user.
+ * 
+ * - Some servers advertise a GetMap URL which is not reachable from the
+ *   internet, e.g. "http://172.28.5.2:7007/..." behind a proxy. For such
+ *   URLs (private, loopback or link-local addresses, "localhost", or host
+ *   names without a domain), the server part is taken from the user's URL.
+ * - Query parameters from the user's URL which are not part of the WMS
+ *   protocol (e.g. "token=...", "map=...") are added to the GetMap URL.
+ */
+QString wmsGetMapDatasetName(const QString& advertised_dataset_name, const QString& server_url);
+
+
+/**
  * Queries the layers offered by a WMS server.
  *
  * If the URL is already a GetMap request, the result is that single layer.
@@ -84,13 +98,18 @@ struct WmsDescription
  *
  * If cache_path is not empty, GDAL's tile cache is enabled at this path.
  *
+ * If transparent is true, images are requested as PNG with transparent
+ * background, for overlay layers (e.g. buildings, parcels). Otherwise,
+ * images are requested as JPEG, which is smaller for photos.
+ *
  * This function does not access the network.
  */
 WmsDescription makeWmsDescription(const QString& dataset_name,
                                   const Georeferencing& georef,
                                   const QRectF& map_extent,
                                   double resolution,
-                                  const QString& cache_path = {});
+                                  const QString& cache_path = {},
+                                  bool transparent = false);
 
 
 }  // namespace OpenOrienteering

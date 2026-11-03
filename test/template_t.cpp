@@ -469,6 +469,80 @@ private slots:
 		         QStringLiteral("WMS:https://example.com/wms?map=x&SERVICE=WMS&REQUEST=GetCapabilities"));
 	}
 	
+	void wmsGetMapDatasetNameTest_data()
+	{
+		QTest::addColumn<QString>("advertised");
+		QTest::addColumn<QString>("server_url");
+		QTest::addColumn<QString>("expected");
+		
+		auto const getmap = QStringLiteral("?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=a&SRS=EPSG:3765&BBOX=1,2,3,4");
+		QTest::newRow("public, unchanged")
+		        << QString(QLatin1String("WMS:https://maps.example.com/wms") + getmap)
+		        << QStringLiteral("https://maps.example.com/wms")
+		        << QString(QLatin1String("WMS:https://maps.example.com/wms") + getmap);
+		QTest::newRow("other public host, unchanged")
+		        << QString(QLatin1String("WMS:https://tiles.example.org/ows") + getmap)
+		        << QStringLiteral("https://maps.example.com/wms")
+		        << QString(QLatin1String("WMS:https://tiles.example.org/ows") + getmap);
+		QTest::newRow("private IPv4 -> user URL")
+		        << QString(QLatin1String("WMS:http://172.28.5.2:7007/ows2-m/wms") + getmap)
+		        << QStringLiteral("https://oss.example.hr/OssWebServices/wms")
+		        << QString(QLatin1String("WMS:https://oss.example.hr/OssWebServices/wms") + getmap);
+		QTest::newRow("localhost -> user URL")
+		        << QString(QLatin1String("WMS:http://localhost:8080/geoserver/wms") + getmap)
+		        << QStringLiteral("https://maps.example.com/wms")
+		        << QString(QLatin1String("WMS:https://maps.example.com/wms") + getmap);
+		QTest::newRow("172.32 is public")
+		        << QString(QLatin1String("WMS:http://172.32.0.1/wms") + getmap)
+		        << QStringLiteral("https://maps.example.com/wms")
+		        << QString(QLatin1String("WMS:http://172.32.0.1/wms") + getmap);
+		QTest::newRow("token is carried over, WMS parameters are not")
+		        << QString(QLatin1String("WMS:http://10.0.0.5/wms") + getmap)
+		        << QStringLiteral("https://maps.example.com/wms?token=abc&request=GetCapabilities&VERSION=1.3.0")
+		        << QString(QLatin1String("WMS:https://maps.example.com/wms") + getmap + QLatin1String("&token=abc"));
+		QTest::newRow("internal user URL, unchanged")
+		        << QString(QLatin1String("WMS:http://10.0.0.5/wms") + getmap)
+		        << QStringLiteral("http://192.168.1.2/wms")
+		        << QString(QLatin1String("WMS:http://10.0.0.5/wms") + getmap);
+	}
+	
+	void wmsGetMapDatasetNameTest()
+	{
+		QFETCH(QString, advertised);
+		QFETCH(QString, server_url);
+		QFETCH(QString, expected);
+		QCOMPARE(wmsGetMapDatasetName(advertised, server_url), expected);
+	}
+	
+	void wmsUnreachableTemplateTest()
+	{
+		// A failed download must not result in a blank template.
+		// Port 9 (discard) on localhost: connections are refused immediately.
+		auto const xml = QByteArray(
+		    "<GDAL_WMS><Service name=\"WMS\"><Version>1.1.1</Version>"
+		    "<ServerUrl>http://127.0.0.1:9/wms?</ServerUrl><SRS>EPSG:3857</SRS>"
+		    "<ImageFormat>image/png</ImageFormat><Layers>x</Layers></Service>"
+		    "<DataWindow><UpperLeftX>0</UpperLeftX><UpperLeftY>100</UpperLeftY>"
+		    "<LowerRightX>100</LowerRightX><LowerRightY>0</LowerRightY>"
+		    "<SizeX>100</SizeX><SizeY>100</SizeY></DataWindow>"
+		    "<BandsCount>3</BandsCount><MaxConnections>1</MaxConnections><Timeout>5</Timeout></GDAL_WMS>");
+		QTemporaryDir dir;
+		QVERIFY(dir.isValid());
+		auto const path = dir.filePath(QStringLiteral("unreachable.xml"));
+		QFile file(path);
+		QVERIFY(file.open(QIODevice::WriteOnly));
+		file.write(xml);
+		file.close();
+		
+		Map map;
+		auto temp = Template::templateForPath(path, &map);
+		QVERIFY(temp);
+		QCOMPARE(temp->getTemplateType(), "GdalTemplate");
+		QVERIFY(!temp->loadTemplateFile());
+		QCOMPARE(temp->getTemplateState(), Template::Invalid);
+		QVERIFY(!temp->errorString().isEmpty());
+	}
+	
 	void wmsDescriptionTest_data()
 	{
 		QTest::addColumn<QString>("dataset_name");
@@ -510,6 +584,19 @@ private slots:
 		QVERIFY(xml.contains(QStringLiteral("<SizeX>%1</SizeX>").arg(description.size.width())));
 		QVERIFY(xml.contains(QStringLiteral("<Path>/tmp/wms-cache</Path>")));
 		QVERIFY(!xml.contains(QStringLiteral("OverviewCount")));
+		// Default: opaque JPEG
+		QVERIFY(xml.contains(QStringLiteral("<ImageFormat>image/jpeg</ImageFormat>")));
+		QVERIFY(xml.contains(QStringLiteral("<Transparent>FALSE</Transparent>")));
+		QVERIFY(xml.contains(QStringLiteral("<BandsCount>3</BandsCount>")));
+		{
+			auto const transparent = makeWmsDescription(dataset_name, georef, extent, 1.0, {}, true);
+			QVERIFY2(transparent.isValid(), qPrintable(transparent.error));
+			auto const transparent_xml = QString::fromUtf8(transparent.xml);
+			QVERIFY(transparent_xml.contains(QStringLiteral("<ImageFormat>image/png</ImageFormat>")));
+			QVERIFY(transparent_xml.contains(QStringLiteral("<Transparent>TRUE</Transparent>")));
+			QVERIFY(transparent_xml.contains(QStringLiteral("<BandsCount>4</BandsCount>")));
+			QVERIFY(!transparent_xml.contains(QStringLiteral("<Cache>")));
+		}
 		auto const left = QRegularExpression(QStringLiteral("<UpperLeftX>([^<]*)</UpperLeftX>")).match(xml).captured(1).toDouble();
 		QVERIFY2(std::abs(left - expected_left) < std::abs(expected_left) * 0.001, qPrintable(QString::number(left, 'f')));
 		
