@@ -18,6 +18,7 @@
  */
 
 
+#include <algorithm>
 #include <cmath>
 #include <iosfwd>
 #include <memory>
@@ -69,6 +70,7 @@
 #include "gdal/ogr_template.h"
 #include "gdal/gdal_manager.h"
 #ifdef MAPPER_USE_GDAL
+#  include "gdal/gdal_image_reader.h"
 #  include "gdal/wms_service.h"
 #endif
 #include "templates/template.h"
@@ -412,6 +414,53 @@ private slots:
 #endif
 	
 #ifdef MAPPER_USE_GDAL
+	void gdalImageReaderProgressTest()
+	{
+		auto const path = QFileInfo(QStringLiteral("testdata:templates/epsg-27700.tiff")).absoluteFilePath();
+		
+		// Complete read with progress
+		{
+			GdalImageReader reader(path);
+			QVERIFY(reader.canRead());
+			QVERIFY(!reader.isNetworkSource());
+			std::vector<double> values;
+			QImage image;
+			QVERIFY(reader.read(&image, [&values](double complete) { values.push_back(complete); return true; }));
+			QVERIFY(!reader.wasCancelled());
+			QVERIFY(!image.isNull());
+			QVERIFY(values.size() >= 2);
+			QCOMPARE(values.front(), 0.0);
+			QCOMPARE(values.back(), 1.0);
+			QVERIFY(std::is_sorted(values.begin(), values.end()));
+		}
+		
+		// Cancelled before reading
+		{
+			GdalImageReader reader(path);
+			QImage image;
+			QVERIFY(!reader.read(&image, [](double) { return false; }));
+			QVERIFY(reader.wasCancelled());
+			QVERIFY(!reader.errorString().isEmpty());
+		}
+		
+		// Cancelled while reading
+		{
+			GdalImageReader reader(path);
+			QImage image;
+			QVERIFY(!reader.read(&image, [](double complete) { return complete == 0.0; }));
+			QVERIFY(reader.wasCancelled());
+		}
+		
+		// Plain read still works, and resets the cancelled flag
+		{
+			GdalImageReader reader(path);
+			QImage image;
+			QVERIFY(!reader.read(&image, [](double) { return false; }));
+			QVERIFY(reader.read(&image));
+			QVERIFY(!reader.wasCancelled());
+		}
+	}
+	
 	void wmsCapabilitiesUrlTest()
 	{
 		QCOMPARE(wmsCapabilitiesUrl(QStringLiteral("https://example.com/wms")),

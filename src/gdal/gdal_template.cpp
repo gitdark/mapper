@@ -25,12 +25,18 @@
 
 #include <QtGlobal>
 #include <QByteArray>
+#include <QApplication>
 #include <QChar>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QImageReader>
+#include <QMainWindow>
 #include <QPointF>
+#include <QProgressDialog>
 #include <QRectF>
 #include <QString>
 #include <QVariant>
+#include <QWidget>
 
 #include "core/georeferencing.h"
 #include "core/latlon.h"
@@ -44,6 +50,34 @@
 
 
 namespace OpenOrienteering {
+
+namespace {
+
+/**
+ * Returns a parent for a progress dialog, or nullptr if there is no GUI.
+ * 
+ * Mapper may not be the active application while templates are loading,
+ * so this falls back to a visible main window.
+ */
+QWidget* progressDialogParent()
+{
+	if (!qobject_cast<QApplication*>(QCoreApplication::instance()))
+		return nullptr;
+	if (auto* widget = QApplication::activeModalWidget())
+		return widget;
+	if (auto* widget = QApplication::activeWindow())
+		return widget;
+	auto const top_level_widgets = QApplication::topLevelWidgets();
+	for (auto* widget : top_level_widgets)
+	{
+		if (widget->isVisible() && qobject_cast<QMainWindow*>(widget))
+			return widget;
+	}
+	return nullptr;
+}
+
+}  // namespace
+
 
 // static
 bool GdalTemplate::canRead(const QString& path)
@@ -124,7 +158,46 @@ bool GdalTemplate::loadTemplateFileImpl()
 	
 	qDebug("GdalTemplate: Using GDAL driver '%s'", reader.format().constData());
 	
-	if (!reader.read(&image))
+	// Progress feedback and cancellation, for interactive use.
+	// The read call blocks the event loop, so the dialog is created and
+	// updated from the progress callback. Network sources show it at once,
+	// because the first callback may only come after the first block row.
+	auto* const dialog_parent = progressDialogParent();
+	auto const show_immediately = reader.isNetworkSource();
+	QElapsedTimer timer;
+	timer.start();
+	std::unique_ptr<QProgressDialog> progress_dialog;
+	auto const progress = [&](double complete) -> bool {
+		if (!dialog_parent)
+			return true;
+		if (!progress_dialog && (show_immediately || timer.elapsed() >= 500))
+		{
+			progress_dialog = std::make_unique<QProgressDialog>(
+			                      QCoreApplication::translate("OpenOrienteering::GdalTemplate", "Loading %1...").arg(getTemplateFilename()),
+			                      QCoreApplication::translate("OpenOrienteering::GdalTemplate", "Cancel"),
+			                      0, 1000, dialog_parent);
+			progress_dialog->setWindowModality(Qt::WindowModal);
+			progress_dialog->setMinimumDuration(0);
+			progress_dialog->setAutoClose(false);
+			progress_dialog->setAutoReset(false);
+			progress_dialog->show();
+		}
+		if (!progress_dialog)
+			return true;
+		progress_dialog->setValue(qBound(0, int(complete * 1000), 1000));
+		QApplication::processEvents();
+		return !progress_dialog->wasCanceled();
+	};
+	
+	auto const read_ok = reader.read(&image, progress);
+	progress_dialog.reset();
+	if (reader.wasCancelled())
+	{
+		image = {};
+		setErrorString(reader.errorString());
+		return false;
+	}
+	if (!read_ok)
 	{
 		setErrorString(reader.errorString());
 		

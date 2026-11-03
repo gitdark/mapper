@@ -28,6 +28,7 @@
 #include <QCoreApplication>
 #include <QImage>
 #include <QImageReader>
+#include <QLatin1String>
 #include <QRgb>
 #include <QSize>
 #include <QString>
@@ -55,6 +56,28 @@ QString toWkt(OGRSpatialReferenceH srs)
 }
 
 }
+
+
+namespace {
+
+/// Progress callback data for gdalProgress().
+struct ProgressData
+{
+	const OpenOrienteering::GdalImageReader::ProgressFunction& function;
+	bool cancelled = false;
+};
+
+/// Adapts GdalImageReader::ProgressFunction to GDALProgressFunc.
+/// Cancellation is recorded here: GDAL doesn't report it consistently.
+int CPL_STDCALL gdalProgress(double complete, const char* /*message*/, void* data)
+{
+	auto& progress = *static_cast<ProgressData*>(data);
+	if (!progress.cancelled && !progress.function(complete))
+		progress.cancelled = true;
+	return progress.cancelled ? FALSE : TRUE;
+}
+
+}  // namespace
 
 
 namespace OpenOrienteering {
@@ -113,6 +136,12 @@ QImage GdalImageReader::read()
 
 bool GdalImageReader::read(QImage* image)
 {
+	return read(image, {});
+}
+
+bool GdalImageReader::read(QImage* image, const ProgressFunction& progress)
+{
+	cancelled = false;
 	Q_ASSERT(image);
 	if (!image)
 	{
@@ -147,11 +176,34 @@ bool GdalImageReader::read(QImage* image)
 	auto const width = raster.size.width();
 	auto const height = raster.size.height();
 	CPLErrorReset();
-	auto result = GDALDatasetRasterIO(dataset, GF_Read, 
-	                                  0, 0, width, height,
-	                                  image->bits() + raster.band_offset, width, height,
-	                                  GDT_Byte, raster.bands.count(), raster.bands.data(),
-	                                  raster.pixel_space, image->bytesPerLine(), raster.band_space);
+	GDALRasterIOExtraArg extra_arg;
+	INIT_RASTERIO_EXTRA_ARG(extra_arg);
+	ProgressData progress_data { progress };
+	if (progress)
+	{
+		extra_arg.pfnProgress = &gdalProgress;
+		extra_arg.pProgressData = &progress_data;
+		if (!progress(0.0))
+		{
+			cancelled = true;
+			err = QImageReader::UnknownError;
+			error_string = tr("Loading was cancelled.");
+			return false;
+		}
+	}
+	auto result = GDALDatasetRasterIOEx(dataset, GF_Read,
+	                                    0, 0, width, height,
+	                                    image->bits() + raster.band_offset, width, height,
+	                                    GDT_Byte, raster.bands.count(), raster.bands.data(),
+	                                    raster.pixel_space, image->bytesPerLine(), raster.band_space,
+	                                    &extra_arg);
+	if (progress_data.cancelled)
+	{
+		cancelled = true;
+		err = QImageReader::UnknownError;
+		error_string = tr("Loading was cancelled.");
+		return false;
+	}
 	if (result >= CE_Warning)
 	{
 		err = QImageReader::InvalidDataError;
@@ -161,6 +213,15 @@ bool GdalImageReader::read(QImage* image)
 	
 	raster.postprocessing(*image);
 	return true;
+}
+
+bool GdalImageReader::isNetworkSource() const
+{
+	if (!dataset)
+		return false;
+	auto const driver = QByteArray(GDALGetDriverShortName(GDALGetDatasetDriver(dataset)));
+	return driver == "WMS" || driver == "WMTS"
+	       || path.startsWith(QLatin1String("/vsicurl"));
 }
 
 QByteArray GdalImageReader::rasterBandsAsText() const

@@ -72,6 +72,35 @@ public:
 	bool read(QImage* image);
 	
 	
+	/**
+	 * A progress callback.
+	 * 
+	 * The argument is the completed fraction, from 0.0 to 1.0.
+	 * Return false to cancel reading.
+	 */
+	using ProgressFunction = std::function<bool (double)>;
+	
+	/**
+	 * Reads the image, reporting progress.
+	 * 
+	 * GDAL reports progress per row of raster blocks.
+	 * When reading is cancelled by the callback, this function returns false,
+	 * and wasCancelled() returns true.
+	 */
+	bool read(QImage* image, const ProgressFunction& progress);
+	
+	/**
+	 * Returns true if the last read was cancelled by the progress callback.
+	 */
+	bool wasCancelled() const { return cancelled; }
+	
+	/**
+	 * Returns true if the data is fetched over the network (e.g. WMS),
+	 * i.e. if reading may take a long time even for small images.
+	 */
+	bool isNetworkSource() const;
+	
+	
 	// GDAL related API
 	
 	QByteArray rasterBandsAsText() const;
@@ -124,6 +153,7 @@ private:
 	QString error_string;
 	GDALDatasetH dataset = nullptr;
 	int raster_count = 0;
+	bool cancelled = false;
 	
 };
 
