@@ -1,5 +1,5 @@
 /*
- *    Copyright 2026 The OpenOrienteering developers
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -306,7 +306,7 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
                                   const Georeferencing& georef,
                                   const QRectF& map_extent,
                                   double resolution,
-                                  const QString& cache_path,
+                                  bool use_cache,
                                   bool transparent)
 {
 	WmsDescription result;
@@ -347,8 +347,10 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
 	auto target_srs = SrsPtr(OSRNewSpatialReference(wkt));
 	auto geographic_srs = SrsPtr(OSRNewSpatialReference(nullptr));
 	OSRSetWellKnownGeogCS(geographic_srs.get(), "WGS84");
+#if GDAL_VERSION_MAJOR >= 3
 	OSRSetAxisMappingStrategy(target_srs.get(), OAMS_TRADITIONAL_GIS_ORDER);
 	OSRSetAxisMappingStrategy(geographic_srs.get(), OAMS_TRADITIONAL_GIS_ORDER);
+#endif
 	auto to_target = TransformPtr(OCTNewCoordinateTransformation(geographic_srs.get(), target_srs.get()));
 	auto to_geographic = TransformPtr(OCTNewCoordinateTransformation(target_srs.get(), geographic_srs.get()));
 	if (!to_target || !to_geographic)
@@ -358,7 +360,13 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
 	}
 
 	{
+#if GDAL_VERSION_MAJOR >= 3
 		auto const* name = OSRGetName(target_srs.get());
+#else
+		auto const* name = OSRIsProjected(target_srs.get())
+		                   ? OSRGetAttrValue(target_srs.get(), "PROJCS", 0)
+		                   : OSRGetAttrValue(target_srs.get(), "GEOGCS", 0);
+#endif
 		auto const* auth_name = OSRGetAuthorityName(target_srs.get(), nullptr);
 		auto const* auth_code = OSRGetAuthorityCode(target_srs.get(), nullptr);
 		if (auth_name && auth_code)
@@ -499,8 +507,15 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
 		CPLSetXMLValue(wms, "BandsCount", "3");
 	}
 	
-	if (!cache_path.isEmpty())
-		CPLSetXMLValue(wms, "Cache.Path", cache_path.toUtf8());
+	// An empty Cache element: GDAL uses GDAL_DEFAULT_WMS_CACHE_PATH, which
+	// is set by GdalManager. So the file contains no machine-specific path.
+	if (auto* cache = CPLGetXMLNode(wms, "Cache"))
+	{
+		CPLRemoveXMLChild(wms, cache);
+		CPLDestroyXMLNode(cache);
+	}
+	if (use_cache)
+		CPLCreateXMLNode(wms, CXT_Element, "Cache");
 
 	auto* serialized = CPLSerializeXMLTree(wms);
 	result.xml = QByteArray(serialized);

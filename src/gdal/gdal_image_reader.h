@@ -1,5 +1,6 @@
 /*
  *    Copyright 2019 Kai Pastor
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *

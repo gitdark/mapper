@@ -1,5 +1,6 @@
 /*
  *    Copyright 2019, 2020 Kai Pastor
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -85,7 +86,7 @@ namespace OpenOrienteering {
 GdalImageReader::GdalImageReader(const QString& path)
 : path(path)
 {
-	GdalManager();
+	GdalManager().configure();
 	CPLErrorReset();
 	dataset = GDALOpen(path.toUtf8(), GA_ReadOnly);
 	if (dataset)

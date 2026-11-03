@@ -1,5 +1,5 @@
 /*
- *    Copyright 2026 The OpenOrienteering developers
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -113,7 +113,10 @@ struct WmsDescription
  * map_extent (in map coordinates of a map with the given georeferencing)
  * at the given ground resolution (in meters per pixel).
  *
- * If cache_path is not empty, GDAL's tile cache is enabled at this path.
+ * If use_cache is true, GDAL's tile cache is enabled. The description does
+ * not contain a cache path, so that it can be shared with other computers.
+ * GDAL uses the GDAL_DEFAULT_WMS_CACHE_PATH configuration option instead,
+ * which is set by GdalManager to a subdirectory of the user's cache location.
  *
  * If transparent is true, images are requested as PNG with transparent
  * background, for overlay layers (e.g. buildings, parcels). Otherwise,
@@ -125,7 +128,7 @@ WmsDescription makeWmsDescription(const QString& dataset_name,
                                   const Georeferencing& georef,
                                   const QRectF& map_extent,
                                   double resolution,
-                                  const QString& cache_path = {},
+                                  bool use_cache = false,
                                   bool transparent = false);
 
 

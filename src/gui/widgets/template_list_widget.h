@@ -1,6 +1,7 @@
 /*
  *    Copyright 2012, 2013 Thomas Schöps
  *    Copyright 2020 Kai Pastor
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *

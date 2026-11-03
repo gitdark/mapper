@@ -1,5 +1,5 @@
 /*
- *    Copyright 2026 The OpenOrienteering developers
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -44,7 +44,6 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSignalBlocker>
-#include <QStandardPaths>
 #include <QVBoxLayout>
 #include <QVariant>
 
@@ -283,11 +282,8 @@ void WmsTemplateDialog::updateDescription()
 		return;
 	}
 
-	// Not auto: with QStringBuilder, that would dangle on the temporary.
-	QString const cache_path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-	                           + QLatin1String("/wms");
 	description = makeWmsDescription(layers[std::size_t(row)].dataset_name, georef,
-	                                 selectedArea(), resolution_edit->value(), cache_path,
+	                                 selectedArea(), resolution_edit->value(), /* use_cache */ true,
 	                                 transparent_check->isChecked());
 	if (!description.isValid())
 	{

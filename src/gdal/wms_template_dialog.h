@@ -1,5 +1,5 @@
 /*
- *    Copyright 2026 The OpenOrienteering developers
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *

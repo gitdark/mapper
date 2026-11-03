@@ -1,5 +1,6 @@
 /*
  *    Copyright 2017-2020 Kai Pastor
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -601,7 +602,7 @@ private slots:
 		georef.setProjectedRefPoint(QPointF{500000, 5705000});
 		auto const extent = QRectF{-100, -100, 200, 200};
 		
-		auto const description = makeWmsDescription(dataset_name, georef, extent, 1.0, QStringLiteral("/tmp/wms-cache"));
+		auto const description = makeWmsDescription(dataset_name, georef, extent, 1.0, /* use_cache */ true);
 		QVERIFY2(description.isValid(), qPrintable(description.error));
 		QCOMPARE(description.srs, srs);
 		// 2000 m at 1 m/px, slightly more due to the enclosing bounding box
@@ -610,20 +611,22 @@ private slots:
 		
 		auto const xml = QString::fromUtf8(description.xml);
 		QVERIFY(xml.contains(QStringLiteral("<SizeX>%1</SizeX>").arg(description.size.width())));
-		QVERIFY(xml.contains(QStringLiteral("<Path>/tmp/wms-cache</Path>")));
+		// Cache enabled, but no machine-specific path
+		QVERIFY(xml.contains(QStringLiteral("<Cache />")) || xml.contains(QStringLiteral("<Cache></Cache>")));
+		QVERIFY(!xml.contains(QStringLiteral("<Path>")));
 		QVERIFY(!xml.contains(QStringLiteral("OverviewCount")));
 		// Default: opaque JPEG
 		QVERIFY(xml.contains(QStringLiteral("<ImageFormat>image/jpeg</ImageFormat>")));
 		QVERIFY(xml.contains(QStringLiteral("<Transparent>FALSE</Transparent>")));
 		QVERIFY(xml.contains(QStringLiteral("<BandsCount>3</BandsCount>")));
 		{
-			auto const transparent = makeWmsDescription(dataset_name, georef, extent, 1.0, {}, true);
+			auto const transparent = makeWmsDescription(dataset_name, georef, extent, 1.0, /* use_cache */ false, /* transparent */ true);
 			QVERIFY2(transparent.isValid(), qPrintable(transparent.error));
 			auto const transparent_xml = QString::fromUtf8(transparent.xml);
 			QVERIFY(transparent_xml.contains(QStringLiteral("<ImageFormat>image/png</ImageFormat>")));
 			QVERIFY(transparent_xml.contains(QStringLiteral("<Transparent>TRUE</Transparent>")));
 			QVERIFY(transparent_xml.contains(QStringLiteral("<BandsCount>4</BandsCount>")));
-			QVERIFY(!transparent_xml.contains(QStringLiteral("<Cache>")));
+			QVERIFY(!transparent_xml.contains(QStringLiteral("<Cache")));
 		}
 		auto const left = QRegularExpression(QStringLiteral("<UpperLeftX>([^<]*)</UpperLeftX>")).match(xml).captured(1).toDouble();
 		QVERIFY2(std::abs(left - expected_left) < std::abs(expected_left) * 0.001, qPrintable(QString::number(left, 'f')));

@@ -1,5 +1,6 @@
 /*
  *    Copyright 2019, 2020 Kai Pastor
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -176,6 +177,7 @@ bool GdalTemplate::loadTemplateFileImpl()
 			                      QCoreApplication::translate("OpenOrienteering::GdalTemplate", "Loading %1...").arg(getTemplateFilename()),
 			                      QCoreApplication::translate("OpenOrienteering::GdalTemplate", "Cancel"),
 			                      0, 1000, dialog_parent);
+			progress_dialog->setWindowTitle(QCoreApplication::translate("OpenOrienteering::GdalTemplate", "Loading template"));
 			progress_dialog->setWindowModality(Qt::WindowModal);
 			progress_dialog->setMinimumDuration(0);
 			progress_dialog->setAutoClose(false);

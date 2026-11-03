@@ -1,5 +1,6 @@
 /*
  *    Copyright 2016-2020 Kai Pastor
+ *    Copyright 2026 Darko Surjan
  *
  *    This file is part of OpenOrienteering.
  *
@@ -35,6 +36,7 @@
 #include <QFileInfo>
 #include <QLatin1String>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QVariant>
@@ -340,6 +342,16 @@ private:
 			CPLSetConfigOption("GDAL_DATA", QDir::toNativeSeparators(gdal_data).toLocal8Bit());
 		}
 		
+		// The tile cache for WMS service descriptions with an empty Cache
+		// element. (GDAL's default is "./gdalwmscache".)
+		// The user may overwrite this default in the settings.
+		auto const cache_location = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+		if (!cache_location.isEmpty())
+		{
+			auto const wms_cache = QString(cache_location + QLatin1String("/wms"));
+			CPLSetConfigOption("GDAL_DEFAULT_WMS_CACHE_PATH", QDir::toNativeSeparators(wms_cache).toUtf8());
+		}
+		
 		const char* defaults[][2] = {
 		    { "CPL_DEBUG",               "OFF" },
 		    { "USE_PROJ_480_FEATURES",   "YES" },
@@ -387,7 +399,8 @@ private:
 		for (const auto& parameter : qAsConst(applied_parameters))
 		{
 			if (!new_parameters.contains(parameter)
-			    && parameter != QLatin1String{ "GDAL_DATA" })
+			    && parameter != QLatin1String{ "GDAL_DATA" }
+			    && parameter != QLatin1String{ "GDAL_DEFAULT_WMS_CACHE_PATH" })
 			{
 				CPLSetConfigOption(parameter.toLatin1().constData(), nullptr);
 			}
