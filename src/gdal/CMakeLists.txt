@@ -36,6 +36,8 @@ set(MAPPER_GDAL_SOURCES
   kmz_groundoverlay_export.cpp
   ogr_file_format.cpp
   ogr_template.cpp
+  wms_service.cpp
+  wms_template_dialog.cpp
   mapper-osmconf.ini
 )
 	

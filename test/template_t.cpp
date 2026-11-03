@@ -35,6 +35,7 @@
 #include <QFile>
 #include <QFileDevice>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QImageWriter>
 #include <QIODevice>
 #include <QLineF>
@@ -67,6 +68,9 @@
 #include "fileformats/xml_file_format_p.h"
 #include "gdal/ogr_template.h"
 #include "gdal/gdal_manager.h"
+#ifdef MAPPER_USE_GDAL
+#  include "gdal/wms_service.h"
+#endif
 #include "templates/template.h"
 #include "templates/template_image.h"
 #include "templates/template_table_model.h"
@@ -404,6 +408,94 @@ private slots:
 			QCOMPARE(projected, expected);
 		else
 			QVERIFY2(true, "SRS from GeoTIFF is okay");
+	}
+#endif
+	
+#ifdef MAPPER_USE_GDAL
+	void wmsCapabilitiesUrlTest()
+	{
+		QCOMPARE(wmsCapabilitiesUrl(QStringLiteral("https://example.com/wms")),
+		         QStringLiteral("WMS:https://example.com/wms?SERVICE=WMS&REQUEST=GetCapabilities"));
+		QCOMPARE(wmsCapabilitiesUrl(QStringLiteral(" WMS:https://example.com/wms?map=x&service=wms&request=GetMap ")),
+		         QStringLiteral("WMS:https://example.com/wms?map=x&SERVICE=WMS&REQUEST=GetCapabilities"));
+	}
+	
+	void wmsDescriptionTest_data()
+	{
+		QTest::addColumn<QString>("dataset_name");
+		QTest::addColumn<QString>("srs");
+		QTest::addColumn<double>("expected_left");  // approximate
+		
+		QTest::newRow("WMS 1.1.1, EPSG:3857")
+		        << QStringLiteral("WMS:https://example.invalid/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=test"
+		                          "&SRS=EPSG:3857&BBOX=-20037508.34,-20037508.34,20037508.34,20037508.34")
+		        << QStringLiteral("EPSG:3857") << 1669792.0;
+		QTest::newRow("WMS 1.3.0, EPSG:4326")
+		        << QStringLiteral("WMS:https://example.invalid/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=test"
+		                          "&CRS=EPSG:4326&BBOX=-90,-180,90,180")
+		        << QStringLiteral("EPSG:4326") << 15.0;
+	}
+	
+	void wmsDescriptionTest()
+	{
+		QFETCH(QString, dataset_name);
+		QFETCH(QString, srs);
+		QFETCH(double, expected_left);
+		
+		// 2 km x 2 km around 15°E, 51.5°N at 1:10000
+		Georeferencing georef;
+		georef.setScaleDenominator(10000);
+		georef.setProjectedCRS(QStringLiteral("UTM 33"), QStringLiteral("+proj=utm +zone=33 +datum=WGS84"));
+		QCOMPARE(georef.getState(), Georeferencing::Geospatial);
+		georef.setProjectedRefPoint(QPointF{500000, 5705000});
+		auto const extent = QRectF{-100, -100, 200, 200};
+		
+		auto const description = makeWmsDescription(dataset_name, georef, extent, 1.0, QStringLiteral("/tmp/wms-cache"));
+		QVERIFY2(description.isValid(), qPrintable(description.error));
+		QCOMPARE(description.srs, srs);
+		// 2000 m at 1 m/px, slightly more due to the enclosing bounding box
+		QVERIFY2(description.size.width() >= 1995 && description.size.width() <= 2050, qPrintable(QString::number(description.size.width())));
+		QVERIFY2(description.size.height() >= 1995 && description.size.height() <= 2050, qPrintable(QString::number(description.size.height())));
+		
+		auto const xml = QString::fromUtf8(description.xml);
+		QVERIFY(xml.contains(QStringLiteral("<SizeX>%1</SizeX>").arg(description.size.width())));
+		QVERIFY(xml.contains(QStringLiteral("<Path>/tmp/wms-cache</Path>")));
+		QVERIFY(!xml.contains(QStringLiteral("OverviewCount")));
+		auto const left = QRegularExpression(QStringLiteral("<UpperLeftX>([^<]*)</UpperLeftX>")).match(xml).captured(1).toDouble();
+		QVERIFY2(std::abs(left - expected_left) < std::abs(expected_left) * 0.001, qPrintable(QString::number(left, 'f')));
+		
+		// The description can be opened as a GDAL template (without network access).
+		QTemporaryDir dir;
+		QVERIFY(dir.isValid());
+		auto const path = dir.filePath(QStringLiteral("wms.xml"));
+		QFile file(path);
+		QVERIFY(file.open(QIODevice::WriteOnly));
+		QCOMPARE(file.write(description.xml), qint64(description.xml.size()));
+		file.close();
+		
+		Map map;
+		auto temp = Template::templateForPath(path, &map);
+		QVERIFY(temp);
+		QCOMPARE(temp->getTemplateType(), "GdalTemplate");
+		
+		if (qEnvironmentVariableIsEmpty("MAPPER_TEST_NETWORK"))
+			return;
+		
+		// End-to-end with a public server
+		auto const layers_url = QStringLiteral("https://ows.terrestris.de/osm/service");
+		QString error;
+		auto const layers = queryWmsLayers(layers_url, error);
+		QVERIFY2(!layers.empty(), qPrintable(error));
+		auto const live = makeWmsDescription(layers.front().dataset_name, georef, extent, 4.0);
+		QVERIFY2(live.isValid(), qPrintable(live.error));
+		QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+		file.write(live.xml);
+		file.close();
+		auto live_temp = Template::templateForPath(path, &map);
+		QVERIFY2(live_temp->loadTemplateFile(), qPrintable(live_temp->errorString()));
+		auto const* image_template = qobject_cast<TemplateImage*>(live_temp.get());
+		QVERIFY(image_template);
+		QCOMPARE(image_template->getImage().size(), live.size);
 	}
 #endif
 	

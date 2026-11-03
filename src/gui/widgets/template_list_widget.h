@@ -60,6 +60,13 @@ class TemplateListWidget : public QWidget
 	
 public:
 	static std::unique_ptr<Template> showOpenTemplateDialog(QWidget* dialog_parent, MapEditorController& controller);
+
+	/**
+	 * Creates a template for the given path, and runs its setup and loading.
+	 *
+	 * Shows an error message and returns nullptr on failure.
+	 */
+	static std::unique_ptr<Template> loadTemplate(const QString& path, QWidget* dialog_parent, MapEditorController& controller);
 	
 	~TemplateListWidget() override;
 	
@@ -121,6 +128,9 @@ protected:
 #endif
 	
 	void openTemplate();
+#ifdef MAPPER_USE_GDAL
+	void addWmsTemplate();
+#endif
 	void deleteTemplate();
 	void duplicateTemplate();
 	void moveTemplateUp();

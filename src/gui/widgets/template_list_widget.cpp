@@ -82,6 +82,9 @@
 #include "core/map.h"
 #include "fileformats/file_format_registry.h"
 #include "fileformats/file_import_export.h"
+#ifdef MAPPER_USE_GDAL
+#  include "gdal/wms_template_dialog.h"
+#endif
 #include "gui/file_dialog.h"
 #include "gui/main_window.h"
 #include "gui/util_gui.h"
@@ -240,6 +243,9 @@ TemplateListWidget::TemplateListWidget(Map& map, MapView& main_view, MapEditorCo
 	{
 		new_button_menu->addAction(QIcon(QString::fromLatin1(":/images/open.png")), tr("Open..."), this, &TemplateListWidget::openTemplate);
 		new_button_menu->addAction(controller.getAction("reopentemplate"));
+#ifdef MAPPER_USE_GDAL
+		new_button_menu->addAction(QIcon(QString::fromLatin1(":/images/open.png")), tr("Add WMS layer..."), this, &TemplateListWidget::addWmsTemplate);
+#endif
 	}
 	duplicate_action = new_button_menu->addAction(QIcon(QString::fromLatin1(":/images/tool-duplicate.png")), tr("Duplicate"), this, &TemplateListWidget::duplicateTemplate);
 #if 0
@@ -650,6 +656,12 @@ std::unique_ptr<Template> TemplateListWidget::showOpenTemplateDialog(QWidget* di
 		return {};
 	}
 	
+	return loadTemplate(path, dialog_parent, controller);
+}
+
+
+std::unique_ptr<Template> TemplateListWidget::loadTemplate(const QString& path, QWidget* dialog_parent, MapEditorController& controller)
+{
 	QString error;
 	auto new_temp = Template::templateForPath(path, controller.getMap());
 	if (!new_temp)
@@ -701,6 +713,26 @@ void TemplateListWidget::openTemplate()
 		map.addTemplate(pos, std::move(new_template));
 	}
 }
+
+#ifdef MAPPER_USE_GDAL
+void TemplateListWidget::addWmsTemplate()
+{
+	WmsTemplateDialog dialog(window(), controller);
+	if (dialog.exec() != QDialog::Accepted)
+		return;
+	
+	auto new_template = loadTemplate(dialog.templatePath(), window(), controller);
+	if (new_template)
+	{
+		int pos = -1;
+		int row = currentRow();
+		if (row >= 0)
+			pos = posFromRow(row);
+		
+		map.addTemplate(pos, std::move(new_template));
+	}
+}
+#endif
 
 void TemplateListWidget::deleteTemplate()
 {
