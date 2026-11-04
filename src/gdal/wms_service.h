@@ -68,6 +68,17 @@ QString wmsGetMapDatasetName(const QString& advertised_dataset_name, const QStri
 
 
 /**
+ * Returns the names of the URL's query parameters which look like access
+ * credentials (e.g. "token", "apikey", "password"), and "password" if the
+ * URL contains a password in its user info.
+ *
+ * Such credentials end up in plain text in the service description file
+ * and in the URL history.
+ */
+QStringList wmsCredentialParameters(const QString& url);
+
+
+/**
  * Returns the URL in the form used for the URL history:
  * trimmed, without "WMS:" prefix and without trailing '?' or '&'.
  */

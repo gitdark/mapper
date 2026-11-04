@@ -44,7 +44,9 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QVBoxLayout>
+#include <QWidget>
 #include <QVariant>
 
 #include "core/georeferencing.h"
@@ -150,6 +152,21 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	info_label = new QLabel();
 	info_label->setWordWrap(true);
 
+	credential_warning = new QWidget();
+	{
+		auto* icon = new QLabel();
+		auto const size = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
+		icon->setPixmap(style()->standardIcon(QStyle::SP_MessageBoxWarning, nullptr, this).pixmap(size, size));
+		icon->setAlignment(Qt::AlignTop);
+		credential_warning_label = new QLabel();
+		credential_warning_label->setWordWrap(true);
+		auto* warning_layout = new QHBoxLayout(credential_warning);
+		warning_layout->setContentsMargins(0, 0, 0, 0);
+		warning_layout->addWidget(icon);
+		warning_layout->addWidget(credential_warning_label, 1);
+	}
+	credential_warning->setVisible(false);
+
 	button_box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
 	button_box->button(QDialogButtonBox::Ok)->setText(tr("Add template..."));
 
@@ -163,6 +180,7 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	auto* layout = new QVBoxLayout(this);
 	layout->addLayout(form);
 	layout->addWidget(info_label);
+	layout->addWidget(credential_warning);
 	layout->addWidget(button_box);
 
 	connect(load_button, &QPushButton::clicked, this, &WmsTemplateDialog::loadLayers);
@@ -172,6 +190,8 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	connect(url_combo, QOverload<int>::of(&QComboBox::activated), this, &WmsTemplateDialog::loadLayers);
 	connect(url_edit, &QLineEdit::returnPressed, this, &WmsTemplateDialog::loadLayers);
 	connect(layer_list, &QListWidget::currentRowChanged, this, &WmsTemplateDialog::updateDescription);
+	connect(layer_list, &QListWidget::currentRowChanged, this, &WmsTemplateDialog::updateCredentialWarning);
+	connect(url_edit, &QLineEdit::textChanged, this, &WmsTemplateDialog::updateCredentialWarning);
 	connect(area_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &WmsTemplateDialog::updateDescription);
 	connect(resolution_edit, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &WmsTemplateDialog::updateDescription);
 	connect(transparent_check, &QCheckBox::toggled, this, &WmsTemplateDialog::updateDescription);
@@ -186,6 +206,7 @@ WmsTemplateDialog::WmsTemplateDialog(QWidget* parent, MapEditorController& contr
 	}
 
 	updateDescription();
+	updateCredentialWarning();
 	resize(560, 480);
 }
 
@@ -307,6 +328,34 @@ void WmsTemplateDialog::updateDescription()
 
 	info_label->setText(text);
 	ok_button->setEnabled(true);
+}
+
+
+void WmsTemplateDialog::updateCredentialWarning()
+{
+	// The URL in the field, and the GetMap URL of the selected layer which
+	// will be written to the template file.
+	auto names = wmsCredentialParameters(url_edit->text());
+	auto const row = layer_list->currentRow();
+	if (row >= 0 && row < int(layers.size()))
+	{
+		auto const more = wmsCredentialParameters(layers[std::size_t(row)].dataset_name);
+		for (auto const& name : more)
+		{
+			if (!names.contains(name, Qt::CaseInsensitive))
+				names.push_back(name);
+		}
+	}
+	
+	credential_warning->setVisible(!names.isEmpty());
+	if (names.isEmpty())
+		return;
+	
+	credential_warning_label->setText(
+	    tr("The URL contains access credentials (%1). They are saved in plain text "
+	       "in the template file and in the list of recent server URLs. "
+	       "Anyone who receives the template file can use them.")
+	    .arg(names.join(QLatin1String(", "))));
 }
 
 

@@ -470,6 +470,18 @@ private slots:
 		         QStringLiteral("WMS:https://example.com/wms?map=x&SERVICE=WMS&REQUEST=GetCapabilities"));
 	}
 	
+	void wmsCredentialParametersTest()
+	{
+		QCOMPARE(wmsCredentialParameters(QStringLiteral("https://a.example/wms")), QStringList{});
+		QCOMPARE(wmsCredentialParameters(QStringLiteral("https://a.example/wms?map=x&LAYERS=k")), QStringList{});
+		QCOMPARE(wmsCredentialParameters(QStringLiteral("https://a.example/wms?token=abc")), QStringList{QStringLiteral("token")});
+		QCOMPARE(wmsCredentialParameters(QStringLiteral("WMS:https://a.example/wms?SERVICE=WMS&ApiKey=1&map=x")), QStringList{QStringLiteral("ApiKey")});
+		// Empty values are not credentials
+		QCOMPARE(wmsCredentialParameters(QStringLiteral("https://a.example/wms?token=")), QStringList{});
+		QCOMPARE(wmsCredentialParameters(QStringLiteral("https://user:secret@a.example/wms?key=1")),
+		         (QStringList{QStringLiteral("password"), QStringLiteral("key")}));
+	}
+	
 	void wmsUrlHistoryTest()
 	{
 		QCOMPARE(normalizedWmsUrl(QStringLiteral("  WMS:https://a.example/wms?  ")), QStringLiteral("https://a.example/wms"));

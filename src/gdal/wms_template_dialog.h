@@ -75,6 +75,7 @@ private:
 	void loadLayers();
 	void setUrlHistory(const QStringList& history);
 	void updateDescription();
+	void updateCredentialWarning();
 	QRectF selectedArea() const;
 	QString defaultDirectory() const;
 
@@ -93,6 +94,8 @@ private:
 	QDoubleSpinBox* resolution_edit;
 	QCheckBox* transparent_check;
 	QLabel* info_label;
+	QWidget* credential_warning;
+	QLabel* credential_warning_label;
 	QDialogButtonBox* button_box;
 };
 

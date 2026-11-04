@@ -169,7 +169,36 @@ QByteArray toXmlNumber(double value)
 	return QByteArray::number(value, 'f', 10);
 }
 
+bool isCredentialParameter(const QString& key)
+{
+	static const char* const names[] = {
+	    "token", "access_token", "accesstoken", "auth", "authkey", "auth_key",
+	    "apikey", "api_key", "api-key", "key", "password", "passwd", "pwd",
+	    "secret", "client_secret", "signature", "sig",
+	};
+	return std::any_of(std::begin(names), std::end(names), [&key](const char* name) {
+		return key.compare(QLatin1String(name), Qt::CaseInsensitive) == 0;
+	});
+}
+
 }  // namespace
+
+
+QStringList wmsCredentialParameters(const QString& url)
+{
+	QStringList result;
+	auto const qurl = QUrl(stripWmsPrefix(url));
+	if (!qurl.password().isEmpty())
+		result.push_back(QStringLiteral("password"));
+	auto const items = QUrlQuery(qurl).queryItems();
+	for (auto const& item : items)
+	{
+		if (isCredentialParameter(item.first) && !item.second.isEmpty()
+		    && !result.contains(item.first, Qt::CaseInsensitive))
+			result.push_back(item.first);
+	}
+	return result;
+}
 
 
 
