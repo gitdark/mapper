@@ -28,7 +28,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -53,6 +53,7 @@ jobs:
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           "-DMapper_VERSION_DISPLAY=${MAPPER_VERSION_DISPLAY}"
           -DMapper_PACKAGE_QT=ON
           -DMapper_PACKAGE_GDAL=ON
@@ -78,7 +79,7 @@ jobs:
           done
           grep -c '\.dll$' contents.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: mapper-windows-x64
           path: build/*.zip
@@ -91,7 +92,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -119,6 +120,7 @@ jobs:
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           "-DMapper_VERSION_DISPLAY=${MAPPER_VERSION_DISPLAY}"
           "-DCMAKE_PREFIX_PATH=${CONDA_PREFIX}"
           -DCMAKE_FIND_FRAMEWORK=LAST
@@ -163,7 +165,7 @@ jobs:
           ditto -c -k --keepParent stage/Mapper.app "$name"
           ls -l "$name"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: mapper-macos-arm64
           path: '*.zip'
@@ -175,14 +177,14 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build doxygen file \
-            qtbase5-dev qtbase5-dev-tools qttools5-dev qttools5-dev-tools qt5-assistant \
+            qtbase5-dev qtbase5-private-dev qtbase5-dev-tools qttools5-dev qttools5-dev-tools qt5-assistant \
             qtpositioning5-dev libqt5sensors5-dev libqt5serialport5-dev \
             qt5-image-formats-plugins qttranslations5-l10n \
             libgdal-dev gdal-data libproj-dev proj-data libpolyclipping-dev \
@@ -202,6 +204,7 @@ jobs:
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           -DCMAKE_INSTALL_PREFIX=/usr
           "-DMapper_VERSION_DISPLAY=${MAPPER_VERSION_DISPLAY}"
           -DMapper_PACKAGE_GDAL=ON
@@ -246,7 +249,7 @@ jobs:
           done
           ls squashfs-root/usr/lib | wc -l
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: mapper-linux-x86_64
           path: '*.AppImage'
@@ -257,7 +260,7 @@ jobs:
     needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
