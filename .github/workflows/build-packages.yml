@@ -316,4 +316,6 @@ jobs:
 
             **Linux x86_64 (Ubuntu 22.04+, Linux Mint 21+, Debian 12+):** download the `.AppImage`, make it executable (`chmod +x OpenOrienteering*.AppImage`, or in the file manager: Properties -> Permissions -> "Allow executing"), and run it. Nothing is installed, and an installed `openorienteering-mapper` package is not affected. If it does not start and mentions FUSE, install `libfuse2` (Ubuntu 22.04, Mint 21, Debian 12) or `libfuse2t64` (Ubuntu 24.04, Mint 22).
 
+            **Note:** Mapper runs only once per user. If another Mapper (e.g. the official version) is already open, starting this build seems to do nothing. Close the other Mapper first.
+
             Please report problems in this repository's issues, not upstream.
