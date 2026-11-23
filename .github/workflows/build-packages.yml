@@ -1,0 +1,196 @@
+# Unofficial Windows and macOS packages of this fork (WMS templates via GDAL).
+#
+# Runs on manual dispatch (Actions tab -> "Build packages" -> "Run workflow")
+# and on pushed tags named v* (e.g. v0.9.7-wms1). For tags, the packages are
+# attached to a draft GitHub Release, which must be published manually.
+
+name: Build packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  # Shown in Mapper's About dialog and used in package file names.
+  VERSION_SUFFIX: wms
+
+jobs:
+  windows:
+    name: Windows x64 (MSYS2 UCRT64)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git grep
+          pacboy: >-
+            toolchain:p cmake:p ninja:p doxygen:p
+            qt5-base:p qt5-tools:p qt5-imageformats:p qt5-translations:p
+            qt5-location:p qt5-sensors:p qt5-serialport:p
+            gdal:p proj:p
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "MAPPER_VERSION_DISPLAY=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "MAPPER_VERSION_DISPLAY=0.9.7-${VERSION_SUFFIX}-dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          "-DMapper_VERSION_DISPLAY=${MAPPER_VERSION_DISPLAY}"
+          -DMapper_PACKAGE_QT=ON
+          -DMapper_PACKAGE_GDAL=ON
+          -DMapper_PACKAGE_PROJ=ON
+          -DMapper_PACKAGE_ASSISTANT=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Package (ZIP)
+        run: |
+          cd build
+          cpack -G ZIP
+          ls -l *.zip
+
+      - name: Check package contents
+        run: |
+          cd build
+          zip=$(ls *.zip | head -1)
+          unzip -l "$zip" > contents.txt
+          for f in Mapper.exe Qt5Core.dll qwindows.dll proj.db gdalvrt.xsd; do
+            grep -q "$f" contents.txt || { echo "::error::$f missing in $zip"; exit 1; }
+          done
+          grep -c '\.dll$' contents.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mapper-windows-x64
+          path: build/*.zip
+
+  macos:
+    name: macOS arm64 (conda-forge)
+    runs-on: macos-14
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: mapper
+          channels: conda-forge
+          conda-remove-defaults: true
+
+      - name: Install dependencies
+        run: >
+          conda install -y
+          cmake ninja doxygen pkg-config
+          "qt-main=5.15"
+          libgdal-core proj
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "MAPPER_VERSION_DISPLAY=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "MAPPER_VERSION_DISPLAY=0.9.7-${VERSION_SUFFIX}-dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          "-DMapper_VERSION_DISPLAY=${MAPPER_VERSION_DISPLAY}"
+          "-DCMAKE_PREFIX_PATH=${CONDA_PREFIX}"
+          -DCMAKE_FIND_FRAMEWORK=LAST
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          "-DCMAKE_INSTALL_RPATH=${CONDA_PREFIX}/lib"
+          "-DGDAL_DATA_DIR=${CONDA_PREFIX}/share/gdal"
+          "-DPROJ_DATA_DIR=${CONDA_PREFIX}/share/proj"
+          -DMapper_PACKAGE_QT=ON
+          -DMapper_PACKAGE_GDAL=ON
+          -DMapper_PACKAGE_PROJ=ON
+          -DMapper_PACKAGE_ASSISTANT=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Install into app bundle
+        run: |
+          # The install step copies the libraries into Mapper.app (fixup_bundle).
+          cmake --install build --prefix "$PWD/stage"
+          ls stage
+
+      - name: Ad-hoc code signing
+        # Required on Apple Silicon after the libraries were modified.
+        run: codesign --force --deep --sign - stage/Mapper.app
+
+      - name: Check bundle
+        run: |
+          app=stage/Mapper.app
+          test -x "$app/Contents/MacOS/Mapper"
+          find "$app" -name proj.db | grep -q . || { echo "::error::proj.db missing"; exit 1; }
+          find "$app" -name gdalvrt.xsd | grep -q . || { echo "::error::GDAL data missing"; exit 1; }
+          # No library may still point to the build machine's conda environment.
+          if find "$app/Contents" -type f \( -name '*.dylib' -o -perm -u+x \) -print0 \
+             | xargs -0 otool -L 2>/dev/null | grep -F "$CONDA_PREFIX"; then
+            echo "::error::Bundle still references $CONDA_PREFIX"; exit 1
+          fi
+          codesign --verify --deep "$app"
+
+      - name: Package (ZIP)
+        run: |
+          name="OpenOrienteering-Mapper-${MAPPER_VERSION_DISPLAY}-macOS-arm64.zip"
+          ditto -c -k --keepParent stage/Mapper.app "$name"
+          ls -l "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mapper-macos-arm64
+          path: '*.zip'
+
+  release:
+    name: Draft release
+    if: github.ref_type == 'tag'
+    needs: [windows, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*.zip
+          body: |
+            **Unofficial build** of OpenOrienteering Mapper with experimental WMS templates via GDAL.
+            This is not an OpenOrienteering release. For the official version, see https://github.com/OpenOrienteering/mapper/releases.
+
+            Source code: this repository, tag ${{ github.ref_name }}. License: GPL-3.0.
+
+            **Windows 10/11 (64-bit):** unzip and run `Mapper.exe`. The build is not code-signed: if Windows SmartScreen warns, choose "More info" -> "Run anyway".
+
+            **macOS 11 or later (Apple Silicon):** unzip and move `Mapper.app` to Applications. The build is not notarized: on first start, right-click `Mapper.app` -> "Open", or allow it in System Settings -> Privacy & Security -> "Open Anyway".
+
+            Please report problems in this repository's issues, not upstream.
