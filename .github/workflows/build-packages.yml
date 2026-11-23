@@ -77,7 +77,15 @@ jobs:
           ${ASSISTANT_ARGS}
 
       - name: Build
-        run: cmake --build build
+        # The Qt translation targets are normally built during packaging from
+        # the packaging subdirectory, which does not work with Ninja.
+        run: |
+          cmake --build build
+          for t in qt-translations assistant-translations; do
+            if ninja -C build -t targets all | grep -q "^$t:"; then
+              cmake --build build --target "$t"
+            fi
+          done
 
       - name: Package (ZIP)
         run: |
@@ -95,7 +103,7 @@ jobs:
           done
           grep -c '\.dll$' contents.txt
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: mapper-windows-x64
           path: build/*.zip
@@ -166,7 +174,15 @@ jobs:
           ${ASSISTANT_ARGS}
 
       - name: Build
-        run: cmake --build build
+        # The Qt translation targets are normally built during packaging from
+        # the packaging subdirectory, which does not work with Ninja.
+        run: |
+          cmake --build build
+          for t in qt-translations assistant-translations; do
+            if ninja -C build -t targets all | grep -q "^$t:"; then
+              cmake --build build --target "$t"
+            fi
+          done
 
       - name: Install into app bundle
         run: |
@@ -197,7 +213,7 @@ jobs:
           ditto -c -k --keepParent stage/Mapper.app "$name"
           ls -l "$name"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: mapper-macos-arm64
           path: '*.zip'
@@ -282,7 +298,7 @@ jobs:
           done
           ls squashfs-root/usr/lib | wc -l
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: mapper-linux-x86_64
           path: OpenOrienteering*Mapper*.AppImage
@@ -293,7 +309,7 @@ jobs:
     needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           path: dist
           merge-multiple: true
