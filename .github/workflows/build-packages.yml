@@ -1,6 +1,7 @@
 # Unofficial Windows, macOS and Linux (AppImage) packages of this fork (WMS templates via GDAL).
 #
-# Runs on manual dispatch (Actions tab -> "Build packages" -> "Run workflow")
+# Runs on manual dispatch (Actions tab -> "Build packages" -> "Run workflow",
+# optionally for a single platform)
 # and on pushed tags named v* (e.g. v0.9.7-wms1). For tags, the packages are
 # attached to a draft GitHub Release, which must be published manually.
 
@@ -8,6 +9,12 @@ name: Build packages
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        type: choice
+        options: [all, windows, macos, linux]
+        default: all
   push:
     tags:
       - 'v*'
@@ -21,6 +28,8 @@ env:
 
 jobs:
   windows:
+    # Tag builds always build all platforms.
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
     name: Windows x64 (MSYS2 UCRT64)
     runs-on: windows-2022
     timeout-minutes: 120
@@ -109,6 +118,8 @@ jobs:
           path: build/*.zip
 
   macos:
+    # Tag builds always build all platforms.
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'macos'
     name: macOS x86_64 (conda-forge)
     # Intel runner: Apple Silicon runners were often unavailable. The Intel
     # build also runs on Apple Silicon Macs via Rosetta 2.
@@ -221,6 +232,8 @@ jobs:
           path: '*.zip'
 
   linux:
+    # Tag builds always build all platforms.
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux'
     name: Linux x86_64 (AppImage)
     # Oldest supported base, so that the AppImage runs on newer systems
     # (glibc 2.35: Ubuntu 22.04+, Linux Mint 21+, Debian 12+).
