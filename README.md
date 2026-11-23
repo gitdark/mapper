@@ -1,5 +1,13 @@
 # OpenOrienteering Mapper
 
+> **Note: this is an experimental branch in a personal fork, not an official
+> OpenOrienteering release.** It adds WMS layers as templates via GDAL
+> ("Add WMS layer..." in the template list). It is not intended for inclusion
+> upstream; see the discussion in
+> https://github.com/OpenOrienteering/mapper/issues/84.
+> Use it at your own risk. For the official version, see
+> [OpenOrienteering/mapper](https://github.com/OpenOrienteering/mapper).
+
 ![Mapper Screenshot](https://www.openorienteering.org/mapper-manual/pages/images/main_window.png)
 
 OpenOrienteering Mapper is an orienteering mapmaking program and provides
