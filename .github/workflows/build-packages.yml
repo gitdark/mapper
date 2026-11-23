@@ -1,4 +1,4 @@
-# Unofficial Windows and macOS packages of this fork (WMS templates via GDAL).
+# Unofficial Windows, macOS and Linux (AppImage) packages of this fork (WMS templates via GDAL).
 #
 # Runs on manual dispatch (Actions tab -> "Build packages" -> "Run workflow")
 # and on pushed tags named v* (e.g. v0.9.7-wms1). For tags, the packages are
@@ -168,10 +168,93 @@ jobs:
           name: mapper-macos-arm64
           path: '*.zip'
 
+  linux:
+    name: Linux x86_64 (AppImage)
+    # Oldest supported base, so that the AppImage runs on newer systems
+    # (glibc 2.35: Ubuntu 22.04+, Linux Mint 21+, Debian 12+).
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build doxygen file \
+            qtbase5-dev qtbase5-dev-tools qttools5-dev qttools5-dev-tools qt5-assistant \
+            qtpositioning5-dev libqt5sensors5-dev libqt5serialport5-dev \
+            qt5-image-formats-plugins qttranslations5-l10n \
+            libgdal-dev gdal-data libproj-dev proj-data libpolyclipping-dev \
+            libcups2-dev zlib1g-dev
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "MAPPER_VERSION_DISPLAY=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "MAPPER_VERSION_DISPLAY=0.9.7-${VERSION_SUFFIX}-dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        # GDAL and PROJ data go into the AppImage; Mapper finds them
+        # relative to its executable.
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=/usr
+          "-DMapper_VERSION_DISPLAY=${MAPPER_VERSION_DISPLAY}"
+          -DMapper_PACKAGE_GDAL=ON
+          -DMapper_PACKAGE_PROJ=ON
+          -DMapper_PACKAGE_QT=OFF
+          -DMapper_PACKAGE_ASSISTANT=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Install into AppDir
+        run: DESTDIR="$PWD/AppDir" cmake --install build
+
+      - name: Create AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QMAKE: /usr/lib/qt5/bin/qmake
+        run: |
+          base=https://github.com/linuxdeploy
+          wget -q "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          wget -q "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy*.AppImage
+          export LINUXDEPLOY_OUTPUT_VERSION="$MAPPER_VERSION_DISPLAY"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --executable AppDir/usr/bin/Mapper \
+            --executable /usr/lib/qt5/bin/assistant \
+            --desktop-file AppDir/usr/share/applications/Mapper.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/Mapper.png \
+            --plugin qt \
+            --output appimage
+          ls -l *.AppImage
+
+      - name: Check AppImage contents
+        run: |
+          app=$(ls OpenOrienteering*Mapper*.AppImage | head -1)
+          mkdir check && cd check
+          "../$app" --appimage-extract > /dev/null
+          for f in usr/bin/Mapper usr/bin/assistant \
+                   usr/share/openorienteering-mapper/proj/proj.db \
+                   usr/share/openorienteering-mapper/gdal/gdalvrt.xsd; do
+            test -e "squashfs-root/$f" || { echo "::error::$f missing in $app"; exit 1; }
+          done
+          ls squashfs-root/usr/lib | wc -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mapper-linux-x86_64
+          path: '*.AppImage'
+
   release:
     name: Draft release
     if: github.ref_type == 'tag'
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -182,7 +265,9 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/*.AppImage
           body: |
             **Unofficial build** of OpenOrienteering Mapper with experimental WMS templates via GDAL.
             This is not an OpenOrienteering release. For the official version, see https://github.com/OpenOrienteering/mapper/releases.
@@ -192,5 +277,7 @@ jobs:
             **Windows 10/11 (64-bit):** unzip and run `Mapper.exe`. The build is not code-signed: if Windows SmartScreen warns, choose "More info" -> "Run anyway".
 
             **macOS 11 or later (Apple Silicon):** unzip and move `Mapper.app` to Applications. The build is not notarized: on first start, right-click `Mapper.app` -> "Open", or allow it in System Settings -> Privacy & Security -> "Open Anyway".
+
+            **Linux x86_64 (Ubuntu 22.04+, Linux Mint 21+, Debian 12+):** download the `.AppImage`, make it executable (`chmod +x OpenOrienteering*.AppImage`, or in the file manager: Properties -> Permissions -> "Allow executing"), and run it. Nothing is installed, and an installed `openorienteering-mapper` package is not affected. If it does not start and mentions FUSE, install `libfuse2` (Ubuntu 22.04, Mint 21, Debian 12) or `libfuse2t64` (Ubuntu 24.04, Mint 22).
 
             Please report problems in this repository's issues, not upstream.
