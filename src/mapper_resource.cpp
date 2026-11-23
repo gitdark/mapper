@@ -20,6 +20,7 @@
 
 #include "mapper_resource.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QLatin1String>
 #include <QString>
@@ -35,10 +36,10 @@ namespace MapperResource {
 void setSeachPaths()
 {
 	QStringList data_paths;
-	data_paths.reserve(3);
+	data_paths.reserve(4);
 	
 	QStringList doc_paths;
-	doc_paths.reserve(3);
+	doc_paths.reserve(4);
 	
 #if defined(MAPPER_DEVELOPMENT_BUILD) && defined(MAPPER_DEVELOPMENT_RES_DIR)
 	// Use the directory where Mapper is built during development, 
@@ -66,6 +67,10 @@ void setSeachPaths()
 	data_paths.append(assets);
 	doc_paths.append(assets + QLatin1String("/doc"));
 #else
+	// Relocatable installation (e.g. AppImage): paths relative to the executable
+	auto const app_dir = QDir(QCoreApplication::applicationDirPath());
+	data_paths.append(QDir::cleanPath(app_dir.absoluteFilePath(QString::fromLatin1(MAPPER_DATA_DESTINATION_RELATIVE))));
+	doc_paths.append(QDir::cleanPath(app_dir.absoluteFilePath(QString::fromLatin1(MAPPER_ABOUT_DESTINATION_RELATIVE))));
 	data_paths.append(QString::fromLatin1(MAPPER_DATA_DESTINATION));
 	doc_paths.append(QString::fromLatin1(MAPPER_ABOUT_DESTINATION));
 #endif

@@ -40,6 +40,12 @@ get_filename_component(ABSOLUTE_ABOUT_DESTINATION "${MAPPER_ABOUT_DESTINATION}" 
 get_filename_component(ABSOLUTE_DATA_DESTINATION "${MAPPER_DATA_DESTINATION}" ABSOLUTE
   BASE_DIR "${CMAKE_INSTALL_PREFIX}"
 )
+# Relative to the executable, for relocatable installations (e.g. AppImage)
+get_filename_component(absolute_runtime_destination "${MAPPER_RUNTIME_DESTINATION}" ABSOLUTE
+  BASE_DIR "${CMAKE_INSTALL_PREFIX}"
+)
+file(RELATIVE_PATH RELATIVE_ABOUT_DESTINATION "${absolute_runtime_destination}" "${ABSOLUTE_ABOUT_DESTINATION}")
+file(RELATIVE_PATH RELATIVE_DATA_DESTINATION "${absolute_runtime_destination}" "${ABSOLUTE_DATA_DESTINATION}")
 configure_file(mapper_config.h.in "${CMAKE_CURRENT_BINARY_DIR}/mapper_config.h.tmp")
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different mapper_config.h.tmp mapper_config.h
