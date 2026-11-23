@@ -313,7 +313,7 @@ std::vector<WmsLayer> queryWmsLayers(const QString& server_url, QString& error)
 		return layers;
 	}
 
-	auto** subdatasets = GDALGetMetadata(dataset.get(), "SUBDATASETS");
+	CSLConstList subdatasets = GDALGetMetadata(dataset.get(), "SUBDATASETS");
 	for (int i = 1; ; ++i)
 	{
 		auto name = CSLFetchNameValue(subdatasets, QByteArray("SUBDATASET_" + QByteArray::number(i) + "_NAME").constData());
