@@ -267,6 +267,7 @@ jobs:
             --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/Mapper.png \
             --plugin qt \
             --output appimage
+          rm linuxdeploy*.AppImage
           ls -l *.AppImage
 
       - name: Check AppImage contents
@@ -284,7 +285,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: mapper-linux-x86_64
-          path: '*.AppImage'
+          path: OpenOrienteering*Mapper*.AppImage
 
   release:
     name: Draft release
