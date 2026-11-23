@@ -49,6 +49,22 @@ jobs:
             echo "MAPPER_VERSION_DISPLAY=0.9.7-${VERSION_SUFFIX}-dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
 
+      - name: Find Qt Assistant
+        # Mapper looks for an executable named "assistant" next to Mapper.exe.
+        run: |
+          pacman -Ql mingw-w64-ucrt-x86_64-qt5-tools | grep -i assistant || true
+          a=$(find /ucrt64 -iname 'assistant*.exe' 2>/dev/null | grep -vi qt6 | head -1)
+          if [[ -n "$a" ]]; then
+            t="$(cygpath -u "$RUNNER_TEMP")/assistant"
+            mkdir -p "$t"
+            cp "$a" "$t/assistant.exe"
+            echo "ASSISTANT_ARGS=-DMapper_PACKAGE_ASSISTANT=ON -DQt5Help_ASSISTANT_EXECUTABLE=$(cygpath -m "$t/assistant.exe")" >> "$GITHUB_ENV"
+            echo "Using $a"
+          else
+            echo "::warning::Qt Assistant not found, building without the help viewer"
+            echo "ASSISTANT_ARGS=-DMapper_PACKAGE_ASSISTANT=OFF" >> "$GITHUB_ENV"
+          fi
+
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
@@ -58,7 +74,7 @@ jobs:
           -DMapper_PACKAGE_QT=ON
           -DMapper_PACKAGE_GDAL=ON
           -DMapper_PACKAGE_PROJ=ON
-          -DMapper_PACKAGE_ASSISTANT=ON
+          ${ASSISTANT_ARGS}
 
       - name: Build
         run: cmake --build build
@@ -116,6 +132,22 @@ jobs:
             echo "MAPPER_VERSION_DISPLAY=0.9.7-${VERSION_SUFFIX}-dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
 
+      - name: Find Qt Assistant
+        # Mapper looks for an executable named "Assistant" next to Mapper.
+        run: |
+          find "$CONDA_PREFIX" -iname 'assistant*' -not -name '*.qm' 2>/dev/null | head -10
+          a=""
+          for c in "$CONDA_PREFIX/bin/assistant" "$CONDA_PREFIX/bin/Assistant.app/Contents/MacOS/Assistant"; do
+            [[ -x "$c" ]] && { a="$c"; break; }
+          done
+          if [[ -n "$a" ]]; then
+            echo "ASSISTANT_ARGS=-DMapper_PACKAGE_ASSISTANT=ON -DQt5Help_ASSISTANT_EXECUTABLE=$a" >> "$GITHUB_ENV"
+            echo "Using $a"
+          else
+            echo "::warning::Qt Assistant not found, building without the help viewer"
+            echo "ASSISTANT_ARGS=-DMapper_PACKAGE_ASSISTANT=OFF" >> "$GITHUB_ENV"
+          fi
+
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
@@ -131,7 +163,7 @@ jobs:
           -DMapper_PACKAGE_QT=ON
           -DMapper_PACKAGE_GDAL=ON
           -DMapper_PACKAGE_PROJ=ON
-          -DMapper_PACKAGE_ASSISTANT=ON
+          ${ASSISTANT_ARGS}
 
       - name: Build
         run: cmake --build build
