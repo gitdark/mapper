@@ -8,7 +8,7 @@
 > Use it at your own risk. For the official version, see
 > [OpenOrienteering/mapper](https://github.com/OpenOrienteering/mapper).
 >
-> Unofficial builds for Windows, macOS (Apple Silicon) and Linux (AppImage),
+> Unofficial builds for Windows, macOS and Linux (AppImage),
 > when available, are attached to this fork's
 > [Releases](https://github.com/gitdark/mapper/releases).
 > They are not code-signed; the release notes explain how to start them.

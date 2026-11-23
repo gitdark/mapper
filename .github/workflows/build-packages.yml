@@ -109,8 +109,10 @@ jobs:
           path: build/*.zip
 
   macos:
-    name: macOS arm64 (conda-forge)
-    runs-on: macos-15
+    name: macOS x86_64 (conda-forge)
+    # Intel runner: Apple Silicon runners were often unavailable. The Intel
+    # build also runs on Apple Silicon Macs via Rosetta 2.
+    runs-on: macos-15-intel
     timeout-minutes: 120
     defaults:
       run:
@@ -209,13 +211,13 @@ jobs:
 
       - name: Package (ZIP)
         run: |
-          name="OpenOrienteering-Mapper-${MAPPER_VERSION_DISPLAY}-macOS-arm64.zip"
+          name="OpenOrienteering-Mapper-${MAPPER_VERSION_DISPLAY}-macOS-x86_64.zip"
           ditto -c -k --keepParent stage/Mapper.app "$name"
           ls -l "$name"
 
       - uses: actions/upload-artifact@v6
         with:
-          name: mapper-macos-arm64
+          name: mapper-macos-x86_64
           path: '*.zip'
 
   linux:
@@ -328,7 +330,7 @@ jobs:
 
             **Windows 10/11 (64-bit):** unzip and run `Mapper.exe`. The build is not code-signed: if Windows SmartScreen warns, choose "More info" -> "Run anyway".
 
-            **macOS 11 or later (Apple Silicon):** unzip and move `Mapper.app` to Applications. The build is not notarized: on first start, right-click `Mapper.app` -> "Open", or allow it in System Settings -> Privacy & Security -> "Open Anyway".
+            **macOS 11 or later (Intel, and Apple Silicon via Rosetta 2):** unzip and move `Mapper.app` to Applications. On Apple Silicon Macs, macOS offers to install Rosetta 2 on first start if it is missing. The build is not notarized: if macOS refuses to open it, go to System Settings -> Privacy & Security and click "Open Anyway" (on macOS 14 and older, right-click `Mapper.app` -> "Open" also works).
 
             **Linux x86_64 (Ubuntu 22.04+, Linux Mint 21+, Debian 12+):** download the `.AppImage`, make it executable (`chmod +x OpenOrienteering*.AppImage`, or in the file manager: Properties -> Permissions -> "Allow executing"), and run it. Nothing is installed, and an installed `openorienteering-mapper` package is not affected. If it does not start and mentions FUSE, install `libfuse2` (Ubuntu 22.04, Mint 21, Debian 12) or `libfuse2t64` (Ubuntu 24.04, Mint 22).
 
